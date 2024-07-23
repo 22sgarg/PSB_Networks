@@ -9,10 +9,14 @@ import streamlit.components.v1 as components
 # Load the data
 @st.cache_data
 def load_data(url):
-    data = pd.read_csv(url)
-    return data
+    try:
+        data = pd.read_csv(url)
+        return data
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None
 
-# Cache processed data
+# Process the data
 @st.cache_data
 def process_data(data):
     def parse_authors(row):
@@ -39,80 +43,83 @@ def process_data(data):
 
 url = "https://raw.githubusercontent.com/22sgarg/PSB_Networks/main/full_author_results.csv"
 data = load_data(url)
-edges_data = process_data(data)
+if data is not None:
+    edges_data = process_data(data)
 
-# Streamlit app
-st.title('Evolving Co-authorship Network')
-year = st.slider('Select Year', min_value=int(data['Year'].min()), max_value=int(data['Year'].max()), value=int(data['Year'].min()), step=1)
+    # Streamlit app
+    st.title('Evolving Co-authorship Network')
+    year = st.slider('Select Year', min_value=int(data['Year'].min()), max_value=int(data['Year'].max()), value=int(data['Year'].min()), step=1)
 
-# Filter edges based on the selected year
-def filter_edges_by_year(year, edges_data):
-    filtered_edges = defaultdict(lambda: {'count': 0, 'titles': [], 'years': [], 'authors': set()})
-    author_collabs = defaultdict(int)
-    
-    for (author1, author2), info in edges_data.items():
-        recent_years = [y for y in info['years'] if y <= year]
-        if recent_years:
-            filtered_edges[(author1, author2)]['count'] = len(recent_years)
-            filtered_edges[(author1, author2)]['titles'] = [(title, y) for title, y in info['titles'] if y <= year]
-            filtered_edges[(author1, author2)]['years'] = recent_years
-            filtered_edges[(author1, author2)]['authors'] = info['authors']
-            author_collabs[author1] += len(recent_years)
-            author_collabs[author2] += len(recent_years)
-    
-    return filtered_edges, author_collabs
+    # Filter edges based on the selected year
+    def filter_edges_by_year(year, edges_data):
+        filtered_edges = defaultdict(lambda: {'count': 0, 'titles': [], 'years': [], 'authors': set()})
+        author_collabs = defaultdict(int)
+        
+        for (author1, author2), info in edges_data.items():
+            recent_years = [y for y in info['years'] if y <= year]
+            if recent_years:
+                filtered_edges[(author1, author2)]['count'] = len(recent_years)
+                filtered_edges[(author1, author2)]['titles'] = [(title, y) for title, y in info['titles'] if y <= year]
+                filtered_edges[(author1, author2)]['years'] = recent_years
+                filtered_edges[(author1, author2)]['authors'] = info['authors']
+                author_collabs[author1] += len(recent_years)
+                author_collabs[author2] += len(recent_years)
+        
+        return filtered_edges, author_collabs
 
-filtered_edges, author_collabs = filter_edges_by_year(year, edges_data)
+    filtered_edges, author_collabs = filter_edges_by_year(year, edges_data)
 
-# Create the network graph
-net = Network(height='750px', width='100%', bgcolor='#FFFFFF', font_color='black', notebook=True)
-opacity_step = 1 / (year - int(data['Year'].min()) + 1)
-for (author1, author2), info in filtered_edges.items():
-    most_recent_year = max(info['years'])
-    opacity = 1 - (year - most_recent_year) * opacity_step
-    node_size_1 = 5 + author_collabs[author1]
-    node_size_2 = 5 + author_collabs[author2]
-    net.add_node(author1, color=f'rgba(0, 0, 255, {opacity})', size=node_size_1)
-    net.add_node(author2, color=f'rgba(0, 0, 255, {opacity})', size=node_size_2)
-    title_str = f"Titles:<br>{'<br>'.join([f'{title} ({y})' for title, y in info['titles']])}<br><br>Collaboration count: {info['count']}"
-    net.add_edge(author1, author2, title=title_str, value=info['count'], color=f'rgba(0, 0, 255, {opacity})')
+    # Create the network graph
+    net = Network(height='750px', width='100%', bgcolor='#FFFFFF', font_color='black', notebook=True)
+    opacity_step = 1 / (year - int(data['Year'].min()) + 1)
+    for (author1, author2), info in filtered_edges.items():
+        most_recent_year = max(info['years'])
+        opacity = 1 - (year - most_recent_year) * opacity_step
+        node_size_1 = 5 + author_collabs[author1]
+        node_size_2 = 5 + author_collabs[author2]
+        net.add_node(author1, color=f'rgba(0, 0, 255, {opacity})', size=node_size_1)
+        net.add_node(author2, color=f'rgba(0, 0, 255, {opacity})', size=node_size_2)
+        title_str = f"Titles:<br>{'<br>'.join([f'{title} ({y})' for title, y in info['titles']])}<br><br>Collaboration count: {info['count']}"
+        net.add_edge(author1, author2, title=title_str, value=info['count'], color=f'rgba(0, 0, 255, {opacity})')
 
-net.show_buttons(filter_=['physics'])
-net.show('network.html')
+    net.show_buttons(filter_=['physics'])
+    net.show('network.html')
 
-# Display the graph
-HtmlFile = open('network.html', 'r', encoding='utf-8')
-source_code = HtmlFile.read()
-components.html(source_code, height=800)
+    # Display the graph
+    HtmlFile = open('network.html', 'r', encoding='utf-8')
+    source_code = HtmlFile.read()
+    components.html(source_code, height=800)
 
-# Sidebar dashboard
-st.sidebar.title("Paper Metadata")
-hover_data = st.sidebar.empty()
-hover_data.markdown("Hover over a cluster or edge to see details here")
-
-# Function to update sidebar with metadata
-def update_sidebar(authors, titles):
-    hover_data.markdown(f"**Authors:** {', '.join(authors)}\n\n**Titles and Years Published:**\n- " + '\n- '.join([f"{title} ({year})" for title, year in titles]))
-
-# Placeholder for clicked edge data
-if 'clicked_edge' not in st.session_state:
-    st.session_state['clicked_edge'] = None
-
-# Function to handle edge click
-def edge_click(authors, titles):
-    st.session_state['clicked_edge'] = (authors, titles)
-    update_sidebar(authors, titles)
-
-# Adding edge click event
-for edge in net.edges:
-    if edge['title']:
-        authors = [edge['from'], edge['to']]
-        titles = [(title.split('(')[0], int(title.split('(')[1].split(')')[0])) for title in edge['title'].split("<br>")[1:-2]]
-        edge_click(authors, titles)
-
-# Display clicked edge data
-if st.session_state['clicked_edge']:
-    authors, titles = st.session_state['clicked_edge']
-    update_sidebar(authors, titles)
-else:
+    # Sidebar dashboard
+    st.sidebar.title("Paper Metadata")
+    hover_data = st.sidebar.empty()
     hover_data.markdown("Hover over a cluster or edge to see details here")
+
+    # Function to update sidebar with metadata
+    def update_sidebar(authors, titles):
+        hover_data.markdown(f"**Authors:** {', '.join(authors)}\n\n**Titles and Years Published:**\n- " + '\n- '.join([f"{title} ({year})" for title, year in titles]))
+
+    # Placeholder for clicked edge data
+    if 'clicked_edge' not in st.session_state:
+        st.session_state['clicked_edge'] = None
+
+    # Function to handle edge click
+    def edge_click(authors, titles):
+        st.session_state['clicked_edge'] = (authors, titles)
+        update_sidebar(authors, titles)
+
+    # Adding edge click event
+    for edge in net.edges:
+        if edge['title']:
+            authors = [edge['from'], edge['to']]
+            titles = [(title.split('(')[0], int(title.split('(')[1].split(')')[0])) for title in edge['title'].split("<br>")[1:-2]]
+            edge_click(authors, titles)
+
+    # Display clicked edge data
+    if st.session_state['clicked_edge']:
+        authors, titles = st.session_state['clicked_edge']
+        update_sidebar(authors, titles)
+    else:
+        hover_data.markdown("Hover over a cluster or edge to see details here")
+else:
+    st.error("Failed to load data.")
