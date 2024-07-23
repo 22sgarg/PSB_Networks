@@ -8,7 +8,7 @@ import ast
 # Load the data
 @st.cache
 def load_data():
-    url = "https://github.com/22sgarg/PSB_Networks/blob/main/full_author_results.csv"
+    url = "https://raw.githubusercontent.com/22sgarg/PSB_Networks/main/full_author_results.csv"
     return pd.read_csv(url)
 
 data = load_data()
