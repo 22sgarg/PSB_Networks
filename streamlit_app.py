@@ -30,6 +30,7 @@ def process_data(data):
             return []
 
     edges_data = defaultdict(lambda: {'count': 0, 'titles': [], 'years': [], 'authors': set()})
+    collaborations_per_year = defaultdict(int)
     
     for idx, row in data.iterrows():
         if pd.notnull(row['Full Authors']):
@@ -38,15 +39,16 @@ def process_data(data):
                 edges_data[(pair[0], pair[1])]['titles'].append((pair[2], pair[3]))
                 edges_data[(pair[0], pair[1])]['years'].append(pair[3])
                 edges_data[(pair[0], pair[1])]['authors'].update([pair[0], pair[1]])
+                collaborations_per_year[pair[3]] += 1
     
     # Convert defaultdict to a regular dict for serialization
     edges_data = {k: dict(v) for k, v in edges_data.items()}
-    return edges_data
+    return edges_data, collaborations_per_year
 
 url = "https://raw.githubusercontent.com/22sgarg/PSB_Networks/main/full_author_results.csv"
 data = load_data(url)
 if data is not None:
-    edges_data = process_data(data)
+    edges_data, collaborations_per_year = process_data(data)
 
     # Streamlit app
     st.title('Evolving Co-authorship Network')
@@ -73,16 +75,16 @@ if data is not None:
     
     # Set hierarchical layout options
     net.set_options("""
-    var options = {
+    {
       "layout": {
         "hierarchical": {
           "enabled": true,
-          "direction": "UD",  # UD = Top-Down
-          "sortMethod": "hubsize"  # hubsize = Sort nodes based on the hub size
+          "direction": "UD",  // UD = Top-Down
+          "sortMethod": "hubsize"  // hubsize = Sort nodes based on the hub size
         }
       },
       "physics": {
-        "enabled": false  # Disable physics for stable layout
+        "enabled": false  // Disable physics for stable layout
       }
     }
     """)
@@ -99,5 +101,11 @@ if data is not None:
     HtmlFile = open('network.html', 'r', encoding='utf-8')
     source_code = HtmlFile.read()
     components.html(source_code, height=800)
+
+    # Display collaboration trends
+    st.subheader('Collaboration Trends Over Time')
+    collaboration_trend = pd.DataFrame(list(collaborations_per_year.items()), columns=['Year', 'Collaborations'])
+    collaboration_trend = collaboration_trend.sort_values(by='Year')
+    st.line_chart(collaboration_trend.set_index('Year'))
 else:
     st.error("Failed to load data.")
