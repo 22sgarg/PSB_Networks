@@ -39,6 +39,8 @@ def process_data(data):
                 edges_data[(pair[0], pair[1])]['years'].append(pair[3])
                 edges_data[(pair[0], pair[1])]['authors'].update([pair[0], pair[1]])
     
+    # Convert defaultdict to a regular dict for serialization
+    edges_data = {k: dict(v) for k, v in edges_data.items()}
     return edges_data
 
 url = "https://raw.githubusercontent.com/22sgarg/PSB_Networks/main/full_author_results.csv"
@@ -65,7 +67,7 @@ if data is not None:
                 author_collabs[author1] += len(recent_years)
                 author_collabs[author2] += len(recent_years)
         
-        return filtered_edges, author_collabs
+        return dict(filtered_edges), dict(author_collabs)
 
     filtered_edges, author_collabs = filter_edges_by_year(year, edges_data)
 
