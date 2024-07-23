@@ -69,17 +69,30 @@ if data is not None:
     filtered_edges = filter_edges_by_year(year, edges_data)
 
     # Create the network graph
-    net = Network(height='750px', width='100%', bgcolor='#FFFFFF', font_color='black', notebook=True)
-    opacity_step = 1 / (year - int(data['Year'].min()) + 1)
+    net = Network(height='750px', width='100%', bgcolor='#FFFFFF', font_color='black', notebook=True, directed=False)
+    
+    # Set hierarchical layout options
+    net.set_options("""
+    var options = {
+      "layout": {
+        "hierarchical": {
+          "enabled": true,
+          "direction": "UD",  # UD = Top-Down
+          "sortMethod": "hubsize"  # hubsize = Sort nodes based on the hub size
+        }
+      },
+      "physics": {
+        "enabled": false  # Disable physics for stable layout
+      }
+    }
+    """)
+    
     for (author1, author2), info in filtered_edges.items():
-        most_recent_year = max(info['years'])
-        opacity = 1 - (year - most_recent_year) * opacity_step
-        net.add_node(author1, color=f'rgba(0, 0, 255, {opacity})')
-        net.add_node(author2, color=f'rgba(0, 0, 255, {opacity})')
+        net.add_node(author1, color='blue')
+        net.add_node(author2, color='blue')
         title_str = f"Collaboration count: {info['count']}"
-        net.add_edge(author1, author2, title=title_str, value=info['count'], color=f'rgba(0, 0, 255, {opacity})')
+        net.add_edge(author1, author2, title=title_str, value=info['count'], color='blue')
 
-    net.show_buttons(filter_=['physics'])
     net.show('network.html')
 
     # Display the graph
