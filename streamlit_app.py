@@ -24,16 +24,20 @@ def process_data(data):
             authors_dict = ast.literal_eval(row['Full Authors'])
             authors = list(authors_dict.values())
             pairs = [(authors[i], authors[j], row['Title'], row['Year']) for i in range(len(authors)) for j in range(i+1, len(authors))]
-            return pairs
+            return pairs, authors_dict
         except Exception as e:
             st.error(f"Error parsing authors for row {row}: {e}")
-            return []
+            return [], {}
 
     edges_data = defaultdict(lambda: {'count': 0, 'titles': [], 'years': [], 'authors': set()})
+    authors_data = defaultdict(lambda: {'titles': [], 'ids': []})
     
     for idx, row in data.iterrows():
         if pd.notnull(row['Full Authors']):
-            pairs = parse_authors(row)
+            pairs, authors_dict = parse_authors(row)
+            for author, author_id in authors_dict.items():
+                authors_data[author]['titles'].append(row['Title'])
+                authors_data[author]['ids'].append(author_id)
             for pair in pairs:
                 edges_data[(pair[0], pair[1])]['titles'].append((pair[2], pair[3]))
                 edges_data[(pair[0], pair[1])]['years'].append(pair[3])
@@ -41,12 +45,13 @@ def process_data(data):
     
     # Convert defaultdict to a regular dict for serialization
     edges_data = {k: dict(v) for k, v in edges_data.items()}
-    return edges_data
+    authors_data = {k: dict(v) for k, v in authors_data.items()}
+    return edges_data, authors_data
 
 url = "https://raw.githubusercontent.com/22sgarg/PSB_Networks/main/full_author_results.csv"
 data = load_data(url)
 if data is not None:
-    edges_data = process_data(data)
+    edges_data, authors_data = process_data(data)
 
     # Streamlit app
     st.title('Evolving Co-authorship Network')
@@ -81,7 +86,7 @@ if data is not None:
         node_size_2 = 5 + author_collabs[author2]
         net.add_node(author1, color=f'rgba(0, 0, 255, {opacity})', size=node_size_1)
         net.add_node(author2, color=f'rgba(0, 0, 255, {opacity})', size=node_size_2)
-        title_str = f"Titles:<br>{'<br>'.join([f'{title} ({y})' for title, y in info['titles']])}<br><br>Collaboration count: {info['count']}"
+        title_str = f"Collaboration count: {info['count']}"
         net.add_edge(author1, author2, title=title_str, value=info['count'], color=f'rgba(0, 0, 255, {opacity})')
 
     net.show_buttons(filter_=['physics'])
@@ -104,23 +109,45 @@ if data is not None:
     # Placeholder for clicked edge data
     if 'clicked_edge' not in st.session_state:
         st.session_state['clicked_edge'] = None
+    if 'clicked_node' not in st.session_state:
+        st.session_state['clicked_node'] = None
 
     # Function to handle edge click
     def edge_click(authors, titles):
         st.session_state['clicked_edge'] = (authors, titles)
+        st.session_state['clicked_node'] = None
         update_sidebar(authors, titles)
+
+    # Function to handle node click
+    def node_click(author):
+        titles = authors_data[author]['titles']
+        ids = authors_data[author]['ids']
+        hover_data.markdown(f"**Author:** {author}\n\n**IDs:** {', '.join(ids)}\n\n**Titles:**\n- " + '\n- '.join(titles))
 
     # Adding edge click event
     for edge in net.edges:
         if edge['title']:
             authors = [edge['from'], edge['to']]
-            titles = [(title.split('(')[0], int(title.split('(')[1].split(')')[0])) for title in edge['title'].split("<br>")[1:-2]]
+            titles = []
+            for title in edge['title'].split("<br>")[1:-2]:
+                try:
+                    parsed_title = title.split('(')
+                    year = int(parsed_title[1].split(')')[0])
+                    titles.append((parsed_title[0].strip(), year))
+                except (IndexError, ValueError) as e:
+                    st.error(f"Error parsing title: {title}, error: {e}")
             edge_click(authors, titles)
+
+    # Adding node click event
+    for node in net.nodes:
+        node_click(node['id'])
 
     # Display clicked edge data
     if st.session_state['clicked_edge']:
         authors, titles = st.session_state['clicked_edge']
         update_sidebar(authors, titles)
+    elif st.session_state['clicked_node']:
+        node_click(st.session_state['clicked_node'])
     else:
         hover_data.markdown("Hover over a cluster or edge to see details here")
 else:
