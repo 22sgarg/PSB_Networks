@@ -16,10 +16,14 @@ def load_data(url):
 @st.cache_data
 def process_data(data):
     def parse_authors(row):
-        authors_dict = ast.literal_eval(row['Full Authors'])
-        authors = list(authors_dict.values())
-        pairs = [(authors[i], authors[j], row['Title'], row['Year']) for i in range(len(authors)) for j in range(i+1, len(authors))]
-        return pairs
+        try:
+            authors_dict = ast.literal_eval(row['Full Authors'])
+            authors = list(authors_dict.values())
+            pairs = [(authors[i], authors[j], row['Title'], row['Year']) for i in range(len(authors)) for j in range(i+1, len(authors))]
+            return pairs
+        except Exception as e:
+            st.error(f"Error parsing authors for row {row}: {e}")
+            return []
 
     edges_data = defaultdict(lambda: {'count': 0, 'titles': [], 'years': [], 'authors': set()})
     
