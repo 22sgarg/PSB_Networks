@@ -4,6 +4,7 @@ import networkx as nx
 from collections import defaultdict
 import ast
 from pyvis.network import Network
+import streamlit.components.v1 as components
 
 # Load the data
 @st.cache
