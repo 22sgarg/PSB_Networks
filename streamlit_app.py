@@ -22,52 +22,56 @@ def process_data(data):
         return pairs
 
     edges_data = defaultdict(lambda: {'count': 0, 'titles': [], 'years': [], 'authors': set()})
-    author_collabs = defaultdict(int)
     
     for idx, row in data.iterrows():
         if pd.notnull(row['Full Authors']):
             pairs = parse_authors(row)
             for pair in pairs:
-                edges_data[(pair[0], pair[1])]['count'] += 1
                 edges_data[(pair[0], pair[1])]['titles'].append((pair[2], pair[3]))
                 edges_data[(pair[0], pair[1])]['years'].append(pair[3])
                 edges_data[(pair[0], pair[1])]['authors'].update([pair[0], pair[1]])
-                author_collabs[pair[0]] += 1
-                author_collabs[pair[1]] += 1
     
-    edges_df = pd.DataFrame([(pair[0], pair[1], info['count'], info['titles'], info['years'], list(info['authors'])) for pair, info in edges_data.items()],
-                            columns=['Author1', 'Author2', 'Weight', 'Titles', 'Years', 'Authors'])
-    return edges_df, author_collabs
+    return edges_data
 
 url = "https://raw.githubusercontent.com/22sgarg/PSB_Networks/main/full_author_results.csv"
 data = load_data(url)
-edges_df, author_collabs = process_data(data)
+edges_data = process_data(data)
 
 # Streamlit app
 st.title('Evolving Co-authorship Network')
 year = st.slider('Select Year', min_value=int(data['Year'].min()), max_value=int(data['Year'].max()), value=int(data['Year'].min()), step=1)
 
 # Filter edges based on the selected year
-def filter_edges_by_year(year, edges_df):
-    filtered_edges = edges_df[edges_df['Years'].apply(lambda x: any(y <= year for y in x))]
-    return filtered_edges
+def filter_edges_by_year(year, edges_data):
+    filtered_edges = defaultdict(lambda: {'count': 0, 'titles': [], 'years': [], 'authors': set()})
+    author_collabs = defaultdict(int)
+    
+    for (author1, author2), info in edges_data.items():
+        recent_years = [y for y in info['years'] if y <= year]
+        if recent_years:
+            filtered_edges[(author1, author2)]['count'] = len(recent_years)
+            filtered_edges[(author1, author2)]['titles'] = [(title, y) for title, y in info['titles'] if y <= year]
+            filtered_edges[(author1, author2)]['years'] = recent_years
+            filtered_edges[(author1, author2)]['authors'] = info['authors']
+            author_collabs[author1] += len(recent_years)
+            author_collabs[author2] += len(recent_years)
+    
+    return filtered_edges, author_collabs
 
-filtered_edges = filter_edges_by_year(year, edges_df)
+filtered_edges, author_collabs = filter_edges_by_year(year, edges_data)
 
 # Create the network graph
 net = Network(height='750px', width='100%', bgcolor='#FFFFFF', font_color='black', notebook=True)
 opacity_step = 1 / (year - int(data['Year'].min()) + 1)
-for idx, row in filtered_edges.iterrows():
-    for y in row['Years']:
-        if y <= year:
-            opacity = 1 - (year - y) * opacity_step
-            break
-    node_size_1 = 5 + author_collabs[row['Author1']]
-    node_size_2 = 5 + author_collabs[row['Author2']]
-    net.add_node(row['Author1'], color='rgba(0, 0, 255, {opacity})'.format(opacity=opacity), size=node_size_1)
-    net.add_node(row['Author2'], color='rgba(0, 0, 255, {opacity})'.format(opacity=opacity), size=node_size_2)
-    title_str = f"Titles:<br>{'<br>'.join([f'{title} ({y})' for title, y in row['Titles']])}<br><br>Collaboration count: {row['Weight']}"
-    net.add_edge(row['Author1'], row['Author2'], title=title_str, value=row['Weight'], color='rgba(0, 0, 255, {opacity})'.format(opacity=opacity))
+for (author1, author2), info in filtered_edges.items():
+    most_recent_year = max(info['years'])
+    opacity = 1 - (year - most_recent_year) * opacity_step
+    node_size_1 = 5 + author_collabs[author1]
+    node_size_2 = 5 + author_collabs[author2]
+    net.add_node(author1, color=f'rgba(0, 0, 255, {opacity})', size=node_size_1)
+    net.add_node(author2, color=f'rgba(0, 0, 255, {opacity})', size=node_size_2)
+    title_str = f"Titles:<br>{'<br>'.join([f'{title} ({y})' for title, y in info['titles']])}<br><br>Collaboration count: {info['count']}"
+    net.add_edge(author1, author2, title=title_str, value=info['count'], color=f'rgba(0, 0, 255, {opacity})')
 
 net.show_buttons(filter_=['physics'])
 net.show('network.html')
