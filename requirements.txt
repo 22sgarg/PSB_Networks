@@ -1,6 +1,0 @@
-pandas
-streamlit
-networkx
-matplotlib
-pyvis
-scipy
